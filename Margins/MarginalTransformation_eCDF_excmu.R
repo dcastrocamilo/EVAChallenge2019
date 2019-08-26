@@ -1,8 +1,8 @@
-#######################################################################################################
-##                                                                                                   ##
-## This code, suited to run in a Cluster with mc.cores cores, transform the data into Gaussian scale ##
-##                                                                                                   ##
-#######################################################################################################
+#############################################################################################################################################
+##                                                                                                                                         ##
+## This code, suited to run in a Cluster with mc.cores cores, transform the data into Gaussian scale using the GEV mean to define extremes ##
+##                                                                                                                                         ##
+#############################################################################################################################################
 #!/usr/bin/Rscript
 args <- commandArgs(TRUE)
 for (arg in args) eval(parse(text = arg))
