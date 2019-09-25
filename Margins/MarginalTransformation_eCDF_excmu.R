@@ -103,10 +103,8 @@ get.data.i <- function(i){
       if(sum(!is.exc, na.rm = T) > 0){
         x.nonexc = x[which(!is.exc)]
         w.x = w[month == k & year == j]
-        # Observations in exponential scale
-        y[which(!is.exc)] = w.x[which(!is.exc)]
         # Observations in uniform scale
-        u[which(!is.exc)] <- sapply(y[which(!is.exc)], pexp)
+        y[which(!is.exc)] = w.x[which(!is.exc)]
         # Observations in Gaussian scale
         z[which(!is.exc)] <- sapply(y[which(!is.exc)], Sx)
       }
