@@ -42,14 +42,10 @@ w.fun.inv <- function(w, x){
 # plot(x,y)
 # abline(0,1, col=2)
 
-
 # z = anom.training.gauss[, i] # Obs in Gaussian scale
 z = out[[1]]$anom.training.gauss
 x = anom.training[, i] # Obs in original scale
 z.inv.ecdf = w.fun.inv(pnorm(z), x) # ecdf.inv(pnorm(z)): inverse using ecdf for all z. This is the actual inverse only for values of x less than the treshold.
-
-# xedfun = edfun(x[!is.na(x)])
-# ecdf.inv = xedfun$qfun # this is the inverve function
 
 mu.x = mu.gev.hat[, (i+2)]
 xi.x = xi.hat[, (i+2)]
@@ -78,12 +74,12 @@ for(j in 1:length(x)){
   }
   
 }
-png('~/Dropbox/Projects/EVAChallenge2019/Margins/Checks/Backtransform_loc_1.png', width = 960, height = 960)
+png('~/Dropbox/Projects/EVAChallenge2019/Margins/Checks/Backtransform_loc_1_3years.png', width = 960, height = 960)
 plot(x, y)
 abline(0, 1, col = 2, lwd = 2)
 dev.off()
 
-png('~/Dropbox/Projects/EVAChallenge2019/Margins/Checks/Backtransform_loc_1_exc&noexc.png', width = 960, height = 960)
+png('~/Dropbox/Projects/EVAChallenge2019/Margins/Checks/Backtransform_loc_1_exc&noexc_3years.png', width = 960, height = 960)
 par(mfrow = c(1,2), mar = c(1,4,5,1), pty = 's')
 plot(x.exc, y.exc, main = 'x that exceed the threshold')
 abline(0, 1, col = 2, lwd = 2)
