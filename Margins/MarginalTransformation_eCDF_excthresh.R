@@ -30,7 +30,7 @@ Tx <- function(x, xi, mu, sigma){               ##
     else                                        ##
       return((1/xi)*log(1 + xi*(x - mu)/sigma)) ##
   }                                             ##
-                                                ##
+  ##
 }                                               ##
 ## Transformation to Gaussian scale             ##
 Sx <- function(x){ # x is an exponential r.v.   ##
@@ -49,7 +49,7 @@ get.data.i <- function(i){
   lat.i = loc$lat[i]
   dist.i = dist2coast$distance[i]
   
-  w = ecdf(anom.training[, i])(anom.training[, i])
+  # w = ecdf(anom.training[, i])(anom.training[, i])
   
   anom.training.exp = anom.training.unif = anom.training.gauss = NULL
   xis = sigmas.gp = mus.gev = sigmas.gev = NULL
@@ -82,6 +82,8 @@ get.data.i <- function(i){
       sigmas.gev = c(sigmas.gev, sigma.gev)
       # Observations in original scale (all days within month {k} of year {j})
       x = anom.training[month == k & year == j, i]
+      # Observations in uniform scale (all days within month {k} of year {j}). eCDF computed for each month {k} at each site {i}
+      w.x = ecdf(anom.training[month == k, i])(anom.training[month == k & year == j, i])
       # Exceedance w.r.t. threshold thresh
       is.exc = x > thresh
       ###################
@@ -102,13 +104,13 @@ get.data.i <- function(i){
       #######################
       if(sum(!is.exc, na.rm = T) > 0){
         x.nonexc = x[which(!is.exc)]
-        w.x = w[month == k & year == j]
+        # w.x = w[month == k & year == j]
         # Observations in exponential scale
         y[which(!is.exc)] = w.x[which(!is.exc)]
         # Observations in uniform scale
         u[which(!is.exc)] <- sapply(y[which(!is.exc)], pexp)
         # Observations in Gaussian scale
-        z[which(!is.exc)] <- sapply(y[which(!is.exc)], Sx)
+        z[which(!is.exc)] <- sapply(y[which(!is.exc)], qnorm)
       }
       ###########
       # For NAs #
