@@ -106,7 +106,7 @@ get.data.i <- function(i){
         # Observations in uniform scale
         y[which(!is.exc)] = w.x[which(!is.exc)]
         # Observations in Gaussian scale
-        z[which(!is.exc)] <- sapply(y[which(!is.exc)], Sx)
+        z[which(!is.exc)] <- sapply(y[which(!is.exc)], qnorm)
       }
       ###########
       # For NAs #
@@ -116,8 +116,8 @@ get.data.i <- function(i){
         y[is.na(x)] = u[is.na(x)] = z[is.na(x)] = NA
       }
       
-      anom.training.exp = c(anom.training.exp, y)
-      anom.training.unif = c(anom.training.unif, u)
+      # anom.training.exp = c(anom.training.exp, y)
+      # anom.training.unif = c(anom.training.unif, u)
       anom.training.gauss = c(anom.training.gauss, z)
     }
   }
@@ -143,7 +143,7 @@ get.data.i <- function(i){
 
 print('Running code')
 out <- mclapply(Rs, get.data.i, mc.cores = mc.cores)
-save(out, file = paste0("~/EVAChallenge2019/IBEXcluster/OutputsByLocMu/out_Rs=", min(Rs), "-", max(Rs), ".Rdata"))
+save(out, file = paste0("~/EVAChallenge2019/Margins/OutputsByLocMu/out_Rs=", min(Rs), "-", max(Rs), ".Rdata"))
 print('Outputs saved')
 
 
