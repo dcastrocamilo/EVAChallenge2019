@@ -49,9 +49,9 @@ get.data.i <- function(i){
   lat.i = loc$lat[i]
   dist.i = dist2coast$distance[i]
   
-  # w = ecdf(anom.training[, i])(anom.training[, i])
+  w = ecdf(anom.training[, i])(anom.training[, i])
   
-  anom.training.gauss = NULL
+  anom.training.exp = anom.training.unif = anom.training.gauss = NULL
   xis = sigmas.gp = mus.gev = sigmas.gev = NULL
   
   for(j in unique(year)){
@@ -80,54 +80,40 @@ get.data.i <- function(i){
       }
       mus.gev = c(mus.gev, mu.gev)
       sigmas.gev = c(sigmas.gev, sigma.gev)
-      # all days within month {k} of year {j}
-      month.k_year.j = month == k & year == j 
       # Observations in original scale (all days within month {k} of year {j})
-      x = anom.training[month.k_year.j, i]
-      # eCDF: we borrow strenght across years (3-years window)
-      if(j > min(year) & j < max(year))
-        x.tmp = anom.training[year >= (j-1) & year <= (j+1)  ,i]
-      if(j == min(year))
-        x.tmp = anom.training[year >= j & year <= (j+1)  ,i]
-      if(j == max(year))
-        x.tmp = anom.training[year >= (j-1) & year <= j  ,i]
-      
-      # Observations in uniform scale (all days within month {k} of year {j})
-      w.x = ecdf(x.tmp)(x)
-      # w.x = ecdf(anom.training[month.k_year.j, i])(anom.training[month.k_year.j, i])
-      # w.x = w[month.k_year.j]
-      
+      x = anom.training[month == k & year == j, i]
+      # Observations in uniform scale (all days within month {k} of year {j}). eCDF computed for each month {k} at each site {i}
+      # w.x = ecdf(anom.training[month == k, i])(anom.training[month == k & year == j, i])
       # Exceedance w.r.t. location mu
       is.exc = x > mu.gev 
       ###################
       # For exceedances #
       ###################
-      y = z = numeric(length(x))
+      y = u = z = numeric(length(x))
       if(sum(is.exc, na.rm = T) > 0){
-        exc = which(is.exc)
-        x.exc = x[exc]
+        x.exc = x[which(is.exc)]
         # Observations in exponential scale
-        y[exc] <- sapply(x.exc, Tx, xi = xi, mu = mu.gev, sigma = sigma.gev)
+        y[which(is.exc)] <- sapply(x.exc, Tx, xi = xi, mu = mu.gev, sigma = sigma.gev)
         # Observations in Gaussian scale
-        z[exc] <- sapply(y[exc], Sx)
+        z[which(is.exc)] <- sapply(y[which(is.exc)], Sx)
       }
       #######################
       # For non-exceedances #
       #######################
       if(sum(!is.exc, na.rm = T) > 0){
-        nonexc = which(!is.exc)
-        x.nonexc = x[nonexc]
+        x.nonexc = x[which(!is.exc)]
+        w.x = w[month == k & year == j]
         # Observations in uniform scale
-        y[nonexc] = w.x[nonexc]
+        y[which(!is.exc)] = w.x[which(!is.exc)]
         # Observations in Gaussian scale
-        z[nonexc] <- sapply(y[nonexc], qnorm)
+        z[which(!is.exc)] <- sapply(y[which(!is.exc)], qnorm)
       }
       ###########
       # For NAs #
       ###########
       if(sum(is.na(x)) > 0){
         x.na = which(is.na(x))
-        y[is.na(x)] = z[is.na(x)] = NA
+        y[is.na(x)] = u[is.na(x)] = z[is.na(x)] = NA
       }
       
       anom.training.gauss = c(anom.training.gauss, z)
