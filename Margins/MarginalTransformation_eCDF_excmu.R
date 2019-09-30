@@ -80,8 +80,13 @@ get.data.i <- function(i){
       }
       mus.gev = c(mus.gev, mu.gev)
       sigmas.gev = c(sigmas.gev, sigma.gev)
+      # all days within month {k} of year {j}
+      month.k_year.j = month == k & year == j 
       # Observations in original scale (all days within month {k} of year {j})
-      x = anom.training[month == k & year == j, i]
+      x = anom.training[month.k_year.j, i]
+      # Observations in uniform scale (all days within month {k} of year {j})
+      w.x = w[month.k_year.j]
+      
       # Exceedance w.r.t. location mu
       is.exc = x > mu.gev 
       ###################
@@ -89,24 +94,23 @@ get.data.i <- function(i){
       ###################
       y = u = z = numeric(length(x))
       if(sum(is.exc, na.rm = T) > 0){
-        x.exc = x[which(is.exc)]
+        exc = which(is.exc)
+        x.exc = x[exc]
         # Observations in exponential scale
-        y[which(is.exc)] <- sapply(x.exc, Tx, xi = xi, mu = mu.gev, sigma = sigma.gev)
-        # Observations in uniform scale
-        u[which(is.exc)] <- sapply(y[which(is.exc)], pexp)
+        y[exc] <- sapply(x.exc, Tx, xi = xi, mu = mu.gev, sigma = sigma.gev)
         # Observations in Gaussian scale
-        z[which(is.exc)] <- sapply(y[which(is.exc)], Sx)
+        z[exc] <- sapply(y[exc], Sx)
       }
       #######################
       # For non-exceedances #
       #######################
       if(sum(!is.exc, na.rm = T) > 0){
-        x.nonexc = x[which(!is.exc)]
-        w.x = w[month == k & year == j]
+        nonexc = which(!is.exc)
+        x.nonexc = x[nonexc]
         # Observations in uniform scale
-        y[which(!is.exc)] = w.x[which(!is.exc)]
+        y[nonexc] = w.x[nonexc]
         # Observations in Gaussian scale
-        z[which(!is.exc)] <- sapply(y[which(!is.exc)], qnorm)
+        z[nonexc] <- sapply(y[nonexc], qnorm)
       }
       ###########
       # For NAs #
