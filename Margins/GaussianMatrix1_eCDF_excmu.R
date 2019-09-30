@@ -1,0 +1,48 @@
+#############################################################################################
+##                                                                                         ##
+## 1/4 codes to put the Gaussian data into a matrix, similar to the original anom.training ##
+##                                                                                         ##
+#############################################################################################
+library(rje)
+ncpus = 20
+Replic = 16703
+njobs = ceiling(Replic/ncpus)
+
+anom.training.gauss = xi.hat = sigma.gp.hat = mu.gev.hat = sigma.gev.hat = iter.error = NULL
+
+for(i in 1:(njobs/4)){
+  print(i)
+  resto = Replic%%ncpus
+  tmp = ncpus
+  Rs <- (ncpus)*(i-1) + c(1:(tmp))
+  ncpus = tmp
+  tryload = tryCatch(load(paste0("~/EVAChallenge2019/IBEXcluster/OutputsByLocMu/out_Rs=", min(Rs), "-", max(Rs), ".Rdata")),
+                     error = function(e) e)
+  print(tryload)
+  if(!inherits(tryload, 'error')){
+    for(j in 1:ncpus){
+      res = out[[j]]
+      anom.training.gauss = cbind(anom.training.gauss, res$anom.training.gauss)
+      
+      xi.hat = cbind(xi.hat, res$xis)
+      sigma.gp.hat = cbind(sigma.gp.hat, res$sigmas.gp)
+      mu.gev.hat = cbind(mu.gev.hat, res$mus.gev)
+      sigma.gev.hat = cbind(sigma.gev.hat, res$sigmas.gev)
+      
+    }
+  }
+  else
+    iter.error = c(iter.error, i)
+  
+  save(anom.training.gauss, file = "~/EVAChallenge2019/IBEXcluster/OutputsAllmu/anom.training.gauss_excmu_1.Rdata")
+  save(iter.error, file = "~/EVAChallenge2019/IBEXcluster/OutputsAllmu/iter.error_excmu_1.Rdata")
+  save(xi.hat, file = "~/EVAChallenge2019/IBEXcluster/OutputsAllmu/xi.hat_excmu_1.Rdata")
+  save(sigma.gp.hat, file = "~/EVAChallenge2019/IBEXcluster/OutputsAllmu/sigma.gp.hat_excmu_1.Rdata")
+  save(mu.gev.hat, file = "~/EVAChallenge2019/IBEXcluster/OutputsAllmu/mu.gp.hat_excmu_1.Rdata")
+  
+}
+
+
+
+
+
