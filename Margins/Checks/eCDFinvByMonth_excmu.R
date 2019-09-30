@@ -8,7 +8,7 @@ load("~/Dropbox/Projects/EVAChallenge2019_myversion/DanielaLindaThomas/Daniela/M
 load("~/Dropbox/Projects/EVAChallenge2019_myversion/DanielaLindaThomas/Daniela/Margins/xi.gp_mu.Rdata")
 # load("~/Dropbox/Projects/EVAChallenge2019_myversion/DanielaLindaThomas/Daniela/Margins/anom.training.gauss_mu.Rdata")
 load("~/Dropbox/Projects/EVAChallenge2019_myversion/DanielaLindaThomas/DATA_TRAINING.RData")
-load("~/Dropbox/Projects/EVAChallenge2019/Margins/Checks/out_Rs=1-1_3years.Rdata")
+load("~/Dropbox/Projects/EVAChallenge2019/Margins/Checks/out_Rs=1-1_byMonth.Rdata")
 
 # library(devtools)
 # devtools::install_github('talgalili/edfun')
