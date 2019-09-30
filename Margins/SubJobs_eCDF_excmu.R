@@ -55,7 +55,7 @@ for (i in inicio:njobs) {
                   "#SBATCH -c ",ncpus,"\n",
 		              "#SBATCH --mem=256000 \n",
                   "#SBATCH --time=",jobtime,"\n\n")
-  r_line <- "module load r/3.4.2\n\n"
+  r_line <- "module load R/3.4.2/intel-2017\n\n"
   time_line <- paste0("echo \"",i," $SLURM_JOBID `date`\" | tee -a ", '~/EVAChallenge2019/Margins/', "Runtime_eCDF_excmu.txt\n\n")
   code_line <- paste0("OMP_NUM_THREADS=",omp," Rscript /home/castroda/EVAChallenge2019/Margins/MarginalTransformation_eCDF_excmu.R \"Rs<-c(",
                    paste(Rs,collapse=","),
