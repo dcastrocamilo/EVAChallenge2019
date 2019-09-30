@@ -49,9 +49,9 @@ get.data.i <- function(i){
   lat.i = loc$lat[i]
   dist.i = dist2coast$distance[i]
   
-  w = ecdf(anom.training[, i])(anom.training[, i])
+  # w = ecdf(anom.training[, i])(anom.training[, i])
   
-  anom.training.exp = anom.training.unif = anom.training.gauss = NULL
+  anom.training.gauss = NULL
   xis = sigmas.gp = mus.gev = sigmas.gev = NULL
   
   for(j in unique(year)){
@@ -84,15 +84,25 @@ get.data.i <- function(i){
       month.k_year.j = month == k & year == j 
       # Observations in original scale (all days within month {k} of year {j})
       x = anom.training[month.k_year.j, i]
+      # eCDF: we borrow strenght across years (3-years window)
+      if(j > min(year) & j < max(year))
+        x.tmp = anom.training[year >= (j-1) & year <= (j+1)  ,i]
+      if(j == min(year))
+        x.tmp = anom.training[year >= j & year <= (j+1)  ,i]
+      if(j == max(year))
+        x.tmp = anom.training[year >= (j-1) & year <= j  ,i]
+      
       # Observations in uniform scale (all days within month {k} of year {j})
-      w.x = w[month.k_year.j]
+      w.x = ecdf(x.tmp)(x)
+      # w.x = ecdf(anom.training[month.k_year.j, i])(anom.training[month.k_year.j, i])
+      # w.x = w[month.k_year.j]
       
       # Exceedance w.r.t. location mu
       is.exc = x > mu.gev 
       ###################
       # For exceedances #
       ###################
-      y = u = z = numeric(length(x))
+      y = z = numeric(length(x))
       if(sum(is.exc, na.rm = T) > 0){
         exc = which(is.exc)
         x.exc = x[exc]
@@ -117,30 +127,12 @@ get.data.i <- function(i){
       ###########
       if(sum(is.na(x)) > 0){
         x.na = which(is.na(x))
-        y[is.na(x)] = u[is.na(x)] = z[is.na(x)] = NA
+        y[is.na(x)] = z[is.na(x)] = NA
       }
       
-      # anom.training.exp = c(anom.training.exp, y)
-      # anom.training.unif = c(anom.training.unif, u)
       anom.training.gauss = c(anom.training.gauss, z)
     }
   }
-  # sum(is.finite(anom.training.exp))
-  # sum(is.finite(anom.training.gauss))
-  # 
-  # sum(is.infinite(anom.training.exp))
-  # sum(is.infinite(anom.training.gauss))
-  # 
-  # id.e = which(is.finite(anom.training.exp))
-  # id.g = which(is.finite(anom.training.gauss))
-  # # Finite exp are infinite Gauss
-  # plot(cbind(id.e, id.g))
-  # abline(0, 1, col = 2, lwd = 2)
-  # summary(anom.training.exp[id.e])
-  # summary(anom.training.gauss[id.g])
-  # 
-  # summary(xis)
-  
   
   return(list(anom.training.gauss = anom.training.gauss, xis = xis, sigmas.gp = sigmas.gp, mus.gev = mus.gev, sigmas.gev = sigmas.gev))
 }
