@@ -1,3 +1,8 @@
+######################################################################################
+##                                                                                  ##
+## Back-transform Gaussian data and compare to original values (should be the same) ##
+##                                                                                  ##
+######################################################################################
 load("~/Dropbox/Projects/EVAChallenge2019_myversion/DanielaLindaThomas/Daniela/Margins/mu.gev_mu.Rdata")
 load("~/Dropbox/Projects/EVAChallenge2019_myversion/DanielaLindaThomas/Daniela/Margins/sigma.gp_mu.Rdata")
 load("~/Dropbox/Projects/EVAChallenge2019_myversion/DanielaLindaThomas/Daniela/Margins/xi.gp_mu.Rdata")
