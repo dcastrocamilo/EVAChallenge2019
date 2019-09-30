@@ -7,6 +7,7 @@ load("~/Dropbox/Projects/EVAChallenge2019_myversion/DanielaLindaThomas/Daniela/M
 load("~/Dropbox/Projects/EVAChallenge2019_myversion/DanielaLindaThomas/Daniela/Margins/sigma.gp_mu.Rdata")
 load("~/Dropbox/Projects/EVAChallenge2019_myversion/DanielaLindaThomas/Daniela/Margins/xi.gp_mu.Rdata")
 # load("~/Dropbox/Projects/EVAChallenge2019_myversion/DanielaLindaThomas/Daniela/Margins/anom.training.gauss_mu.Rdata")
+load("~/Dropbox/Projects/EVAChallenge2019_myversion/DanielaLindaThomas/DATA_TRAINING.RData")
 load("~/Dropbox/Projects/EVAChallenge2019/Margins/Checks/out_Rs=1-1_3years.Rdata")
 
 # library(devtools)
@@ -73,7 +74,7 @@ for(j in 1:length(x)){
   }
   
 }
-png('~/Dropbox/Projects/EVAChallenge2019/Margins/Checks/Backtransform_loc_1_3years.png', width = 960, height = 960)
+png('~/Dropbox/Projects/EVAChallenge2019/Margins/Checks/Backtransform_loc_1_all_3years.png', width = 960, height = 960)
 plot(x, y)
 abline(0, 1, col = 2, lwd = 2)
 dev.off()

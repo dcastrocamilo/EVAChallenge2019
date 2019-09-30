@@ -74,12 +74,12 @@ for(j in 1:length(x)){
   }
   
 }
-png('~/Dropbox/Projects/EVAChallenge2019/Margins/Checks/Backtransform_loc_1_3years.png', width = 960, height = 960)
+png('~/Dropbox/Projects/EVAChallenge2019/Margins/Checks/Backtransform_loc_1_all.png', width = 960, height = 960)
 plot(x, y)
 abline(0, 1, col = 2, lwd = 2)
 dev.off()
 
-png('~/Dropbox/Projects/EVAChallenge2019/Margins/Checks/Backtransform_loc_1_exc&noexc_3years.png', width = 960, height = 960)
+png('~/Dropbox/Projects/EVAChallenge2019/Margins/Checks/Backtransform_loc_1_exc&noexc.png', width = 960, height = 960)
 par(mfrow = c(1,2), mar = c(1,4,5,1), pty = 's')
 plot(x.exc, y.exc, main = 'x that exceed the threshold')
 abline(0, 1, col = 2, lwd = 2)
