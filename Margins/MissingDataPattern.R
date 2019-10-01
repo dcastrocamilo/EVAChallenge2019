@@ -18,8 +18,8 @@ check.missings <- function(i){
       out[j,k] = mean(is.na(x.kj))
     }
   }
-  out
-  # sum(out > 0 & out < 1)
+  # out
+  sum(out > 0 & out < 1)
 }
 
 check.missings(1)
@@ -29,4 +29,5 @@ t0 = Sys.time()
 out = sapply(1:16703, check.missings)
 t1 = Sys.time() - t0
 
-range(unlist(out))
+range(unlist(out)) 
+# [1] 0 0 # this means, either we have complete months, or we dont. We dont have partially missing months
