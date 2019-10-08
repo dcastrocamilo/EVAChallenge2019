@@ -3,13 +3,16 @@
 ## This code, suited to run in a Cluster with mc.cores cores, transform the data into Gaussian scale using the GPD threshold to define extremes ##
 ##                                                                                                                                              ##
 ##################################################################################################################################################
-!/usr/bin/Rscript
+#!/usr/bin/Rscript
 args <- commandArgs(TRUE)
 for (arg in args) eval(parse(text = arg))
 rm(arg, args)
 
 library(parallel)
 library(mgcv)
+library(edfun)
+
+# rm(list=setdiff(ls(), c("anom.training", "dist2coast", "mod_xi_time_lat", "prob.fit", "quant.mont.95", "loc", "year", "month", "time")))
 
 print('Loading data')
 load("~/EVAChallenge2019/IBEXcluster/Data/DATA_TRAINING.RData")
@@ -30,46 +33,50 @@ Tx <- function(x, xi, mu, sigma){               ##
     else                                        ##
       return((1/xi)*log(1 + xi*(x - mu)/sigma)) ##
   }                                             ##
-  ##
-}                                               ##
-## Transformation to Gaussian scale             ##
-Sx <- function(x){ # x is an exponential r.v.   ##
-  if(is.na(x))                                  ##
-    return(NA)                                  ##
-  else{                                         ##
-    u <- pexp(x)                                ##
-    return(qnorm(u))                            ##
-  }                                             ##
+                                                ##
 }                                               ##
 ## -------------------------------------------- ##
 
+# i = 1; j = 1994; k = 1
 
 # This function transform the original data to Gaussian scale for a given location i ----
-get.data.i <- function(i){
+get.data.i <- function(i, years = NULL, months = NULL){
   lat.i = loc$lat[i]
   dist.i = dist2coast$distance[i]
   
-  # w = ecdf(anom.training[, i])(anom.training[, i])
+  x = anom.training[, i]
+  # w = edfun(x[!is.na(x)])$pfun(x)*(length(x)/(length(x) + 1))
   
-  anom.training.exp = anom.training.unif = anom.training.gauss = NULL
+  anom.training.gauss = anom.training.unif = NULL
+  # unif.nexc = unif.exc = gauss.nexc = gauss.exc = NULL # for testing
   xis = sigmas.gp = mus.gev = sigmas.gev = NULL
   
-  for(j in unique(year)){
+  if(is.null(years)) years = unique(year)
+  if(is.null(months)) months = 1:12
+  
+  for(j in years){
     
-    for(k in 1:12){
+    for(k in months){
+      # Observations in original scale for month {k} and year {j}
+      x.kj = x[month == k & year == j]
+      
       # Shape GP
       xi <- as.numeric(predict(mod_xi_time_lat$xiObj, newdata = data.frame("month" = k, "year" = j, "lat" = lat.i, "dist" = dist.i)))
-      xis = c(xis, xi)
-      print(xi)
+      xis = rbind(xis, c(k, j, i, xi))
+      # xis = c(xis, xi)
+      
       # Scale GP
       sigma.gp <- as.numeric(exp(predict(mod_xi_time_lat$nuObj, newdata = data.frame("month"= k,"year" = j, "lat" = lat.i, "dist" = dist.i)))/
                                (1 + predict(mod_xi_time_lat$xiObj, newdata = data.frame("month" = k, "year" = j, "lat" = lat.i, "dist" = dist.i))))
-      sigmas.gp = c(sigmas.gp, sigma.gp)
-      print(sigma.gp)
+      sigmas.gp = rbind(sigmas.gp, c(k, j, i, sigma.gp))
+      # sigmas.gp = c(sigmas.gp, sigma.gp)
+      
       # Exceedance probability
       pr = as.numeric(prob.fit$prob[prob.fit$month == k & prob.fit$year == j & prob.fit$dist == dist.i & prob.fit$lat == lat.i][1])
+      
       # Threshold
       thresh = quant.mont.95[k, i]
+      
       # Location and Scale GEV
       if(xi == 0){
         mu.gev = thresh + sigma.gp*log(pr)
@@ -78,76 +85,71 @@ get.data.i <- function(i){
         mu.gev = thresh - sigma.gp*(pr^(-xi) - 1)/(xi*pr^(-xi))
         sigma.gev = sigma.gp - sigma.gp*(pr^(-xi) - 1)/pr^(-xi)
       }
-      mus.gev = c(mus.gev, mu.gev)
-      sigmas.gev = c(sigmas.gev, sigma.gev)
-      # Observations in original scale (all days within month {k} of year {j})
-      x = anom.training[month == k & year == j, i]
-      # Observations in uniform scale (all days within month {k} of year {j}). eCDF computed for each month {k} at each site {i}
-      w.x = ecdf(anom.training[month == k, i])(anom.training[month == k & year == j, i])
-      # Exceedance w.r.t. threshold thresh
-      is.exc = x > thresh
-      ###################
-      # For exceedances #
-      ################### 
-      y = u = z = numeric(length(x))
-      if(sum(is.exc, na.rm = T) > 0){
-        x.exc = x[which(is.exc)]
-        # Observations in exponential scale                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
-        y[which(is.exc)] <- sapply(x.exc, Tx, xi = xi, mu = mu.gev, sigma = sigma.gev)
-        # Observations in uniform scale
-        u[which(is.exc)] <- sapply(y[which(is.exc)], pexp)
-        # Observations in Gaussian scale
-        z[which(is.exc)] <- sapply(y[which(is.exc)], Sx)
-      }
-      #######################
-      # For non-exceedances #
-      #######################
-      if(sum(!is.exc, na.rm = T) > 0){
-        x.nonexc = x[which(!is.exc)]
-        # w.x = w[month == k & year == j]
-        # Observations in exponential scale
-        y[which(!is.exc)] = w.x[which(!is.exc)]
-        # Observations in uniform scale
-        u[which(!is.exc)] <- sapply(y[which(!is.exc)], pexp)
-        # Observations in Gaussian scale
-        z[which(!is.exc)] <- sapply(y[which(!is.exc)], qnorm)
-      }
-      ###########
-      # For NAs #
-      ###########
-      if(sum(is.na(x)) > 0){
-        x.na = which(is.na(x))
-        y[is.na(x)] = u[is.na(x)] = z[is.na(x)] = NA
-      }
+      mus.gev = rbind(mus.gev, c(k, j, i, mu.gev))
+      sigmas.gev = rbind(sigmas.gev, c(k, j, i, sigma.gev))
+      # mus.gev = c(mus.gev, mu.gev)
+      # sigmas.gev = c(sigmas.gev, sigma.gev)
       
-      anom.training.exp = c(anom.training.exp, y)
-      anom.training.unif = c(anom.training.unif, u)
+      if(all(is.na(x.kj))){
+        z = u = x.kj
+        
+      }else{
+        # Observations in uniform scale for month {k} and year {j}
+        w.kj = edfun(x.kj[!is.na(x.kj)])$pfun(x.kj)*(length(x.kj)/(length(x.kj) + 1))
+        # w.kj = w[month == k & year == j]
+        
+        # Exceedance w.r.t. threshold thresh
+        is.exc = x.kj > thresh
+        
+        # Transformation for non-exceedances
+        z = qnorm(w.kj) # Gaussian scale for exceedances and non-exceedances
+        u = w.kj
+        # u.nexc = w.kj[!is.exc] # uniform scale for non-exceedances # for testing
+        # z.nexc = qnorm(u.nexc) # Gaussian scale for non-exceedances # for testing
+        
+        
+        # Transformation for exceedances
+        if(sum(is.exc, na.rm = T) > 0){
+          x.exc = x.kj[is.exc] # Exceedances for month {k} and year {j}
+          tmpE <- sapply(x.exc, Tx, xi = xi, mu = mu.gev, sigma = sigma.gev) # Observations in exponential scale
+          u.exc <- sapply(tmpE, pexp) 
+          u[is.exc] <- u.exc
+          # z.exc <- sapply(u.exc, qnorm) # Gaussian scale for non-exceedances # for testing
+          z[is.exc] <- sapply(u.exc, qnorm) # replacing z values in the presence of exceedances
+        }
+        
+      }
       anom.training.gauss = c(anom.training.gauss, z)
+      anom.training.unif = c(anom.training.unif, u)
+      
+      # qqnorm(z)
+      # qqline(z)
+      # hist(u, freq = F)
+      # unif.nexc = c(unif.nexc, u.nexc)
+      # unif.exc = c(unif.exc, u.exc)
+      # gauss.nexc = c(gauss.nexc, z.nexc)
+      # gauss.exc = c(gauss.exc, z.exc)
+      
     }
   }
-  # sum(is.finite(anom.training.exp))
-  # sum(is.finite(anom.training.gauss))
-  # 
-  # sum(is.infinite(anom.training.exp))
-  # sum(is.infinite(anom.training.gauss))
-  # 
-  # id.e = which(is.finite(anom.training.exp))
-  # id.g = which(is.finite(anom.training.gauss))
-  # # Finite exp are infinite Gauss
-  # plot(cbind(id.e, id.g))
-  # abline(0, 1, col = 2, lwd = 2)
-  # summary(anom.training.exp[id.e])
-  # summary(anom.training.gauss[id.g])
-  # 
-  # summary(xis)
+  
+  xis = data.frame(xis); colnames(xis) = c('month', 'year', 'location', 'xi')
+  sigmas.gp = data.frame(sigmas.gp); colnames(sigmas.gp) = c('month', 'year', 'location', 'sigma.gp')
+  mus.gev = data.frame(mus.gev); colnames(mus.gev) = c('month', 'year', 'location', 'mu.gev')
+  sigmas.gev = data.frame(sigmas.gev); colnames(sigmas.gev) = c('month', 'year', 'location', 'sigma.gev')
   
   
-  return(list(anom.training.gauss = anom.training.gauss, xis = xis, sigmas.gp = sigmas.gp, mus.gev = mus.gev, sigmas.gev = sigmas.gev))
+  return(list(anom.training.gauss = anom.training.gauss, anom.training.unif = anom.training.unif, 
+              xis = xis, sigmas.gp = sigmas.gp, mus.gev = mus.gev, sigmas.gev = sigmas.gev))
+              # unif.nexc = unif.nexc, unif.exc = unif.exc, gauss.nexc = gauss.nexc, gauss.exc = gauss.exc, w = w))
 }
 
 print('Running code')
 out <- mclapply(Rs, get.data.i, mc.cores = mc.cores)
-save(out, file = paste0("~/EVAChallenge2019/IBEXcluster/OutputsByLocTh/out_Rs=", min(Rs), "-", max(Rs), ".Rdata"))
+save(out, file = paste0("~/EVAChallenge2019/MarginsThresh/OutputsByLocTh/Locs=", min(Rs), "-", max(Rs), ".Rdata"))
 print('Outputs saved')
 
+t0 = Sys.time()
+out <- mclapply(1, get.data.i, mc.cores = 1, years = 1994:1995)
+Sys.time() - t0
 
