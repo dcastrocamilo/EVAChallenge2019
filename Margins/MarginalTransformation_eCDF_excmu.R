@@ -49,7 +49,7 @@ get.data.i <- function(i){
   lat.i = loc$lat[i]
   dist.i = dist2coast$distance[i]
   
-  w = ecdf(anom.training[, i])(anom.training[, i])
+  w = ecdf(anom.training[, i])(anom.training[, i])*(length(anom.training[, i])/(length(anom.training[, i]) + 1))
   
   anom.training.exp = anom.training.unif = anom.training.gauss = NULL
   xis = sigmas.gp = mus.gev = sigmas.gev = NULL
