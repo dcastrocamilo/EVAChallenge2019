@@ -27,6 +27,13 @@ Tx.inv <- function(y, xi, mu, sigma){
 }
 
 i = 1 # location
+x = anom.training[, i] # Observations in original scale
+z = out[[1]]$anom.training.gauss # Observations in Gaussian scale
+x.tilde = pnorm(z) # Observations
+
+##################
+
+i = 1 # location
 
 x = anom.training[, i] # Obs in original scale
 w.fun <- ecdf(x) 

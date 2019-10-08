@@ -149,7 +149,4 @@ out <- mclapply(Rs, get.data.i, mc.cores = mc.cores)
 save(out, file = paste0("~/EVAChallenge2019/MarginsThresh/OutputsByLocTh/Locs=", min(Rs), "-", max(Rs), ".Rdata"))
 print('Outputs saved')
 
-t0 = Sys.time()
-out <- mclapply(1, get.data.i, mc.cores = 1, years = 1994:1995)
-Sys.time() - t0
 
