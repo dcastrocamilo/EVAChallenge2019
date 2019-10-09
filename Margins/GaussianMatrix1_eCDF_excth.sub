@@ -1,0 +1,13 @@
+#!/bin/bash -l
+#SBATCH -p debug 
+#SBATCH -J "ecxth_1" 
+#SBATCH --time=02:00:00
+#SBATCH -o Err_Out/%j.out 
+#SBATCH -e Err_Out/%j.err
+#SBATCH -n 1 
+#SBATCH -c 1 
+
+module load R/3.4.2/intel-2017
+
+OMP_NUM_THREADS=1 Rscript /home/castroda/EVAChallenge2019/MarginsThresh/GaussianMatrix1_eCDF_excth.R 
+
