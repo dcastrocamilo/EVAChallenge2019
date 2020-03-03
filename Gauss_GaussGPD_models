@@ -1,0 +1,501 @@
+rm(list=ls())
+
+setwd("~/scratch/Data_Challenge_EVA")
+
+### Number of cores to use on one node. Do not manually set this number. Get instead from the batch file
+ncores = as.numeric(Sys.getenv("SLURM_CPUS_PER_TASK")) * as.numeric(Sys.getenv("SLURM_NTASKS")) 
+
+#################
+### LOAD DATA ###
+#################
+
+### Read data
+load("DATA_TRAINING.RData")
+loc = data.frame(loc)
+load("dist2coast.Rdata")
+
+#######################################################################################################################
+### 0) Fitting the Gaussian model over all observations
+### Both tails do not look Gaussian but we will take care afterwards of the upper tail
+### The lower tail should not influence our twCRPS
+#######################################################################################################################
+
+### Data preparation
+all.obs   = as.vector(anom.training) #obs of site 1, followed by obs of site 2, ...
+all.site  = rep(1:ncol(anom.training), each= nrow(anom.training))
+all.dist  = rep(dist2coast[,1], each= nrow(anom.training))
+all.lat   = rep(loc[,2], each= nrow(anom.training))
+all.month = rep(month, ncol(anom.training))
+all.year  = rep(year, ncol(anom.training))
+
+dat= data.frame("obs"=all.obs,
+                "site"=all.site,
+                "dist"=all.dist,
+                "lat"=all.lat,
+                "month"=all.month,
+                "year"=all.year)
+save(dat,file="dat.Rdata")
+#######################################################################################################################
+library(mgcv)
+library(parallel)
+library(doParallel)
+
+###### we will use the same set of covariates as for the scale parameter of the GPD
+###### full model as a function of years, months, and latitude
+###### we will add a penalty to reduce the degrees of freedom close to 0 to exactly 0 (model selection)
+library(mgcv)
+cl <- makeCluster(ncores)
+mod_Gauss_time_lat <- bam(obs~s(year)+s(month, bs="cc", k=12)+ti(lat)+ti(dist)+ti(lat,dist),
+                          data=dat,cluster=cl,
+                          select=TRUE) #fit Gaussian gam model
+stopCluster(cl)
+save(mod_Gauss_time_lat, file="mod_Gauss_time_lat_full.Rdata")
+
+#get data frames of mus.gauss and sds.gauss for each location
+file_list <- list.files(path="Locs.newGAM",
+                        pattern = "Locs=")
+
+gauss.param <- vector("list", 16703)
+for(ll in 1:length(file_list)){
+  print(ll)
+  load(paste("Locs.newGAM/",file_list[ll],sep=""))
+  for(k in 1:length(out)){
+    ### Gauss
+    mu.loc=out[[k]]$mus.gauss
+    sd.loc=sqrt(out[[k]]$sds.gauss)
+    i=unique(out[[k]]$mus.gauss$location)
+
+    mus.gauss = data.frame(mu.loc); colnames(mus.gauss) = c('month', 'year', 'location', 'mu.gauss')
+    sds.gauss = data.frame(sd.loc); colnames(sds.gauss) = c('month', 'year', 'location', 'sd.gauss')
+
+    gauss.param[[i]] <- list(mus.gauss=mus.gauss, sds.gauss=sds.gauss)
+  }
+}
+
+save(gauss.param, file="gauss.param.Rdata")
+
+file_list <- list.files(path="Locs.newGAM",
+                        pattern = "Locs=")
+
+data.gauss <- vector("list", 16703)
+for(ll in 1:length(file_list)){
+  print(ll)
+  load(paste("Locs.newGAM/",file_list[ll],sep=""))
+  for(k in 1:length(out)){
+    ### Gauss
+    mu.loc=out[[k]]$mus.gauss
+    sd.loc=sqrt(out[[k]]$sds.gauss)
+    i=unique(out[[k]]$mus.gauss$location)
+    
+    
+    loc <- as.data.frame(loc)
+    
+    lat.i  = loc$lat[i]
+    dist.i = dist2coast$distance[i]
+    x      = anom.training[,i]
+    
+    z.gauss=NULL
+    for(j in unique(year)){
+      for(k in 1:12){
+        # Observations in original scale for month {k} and year {j}
+        x.kj = x[month == k & year == j]
+        
+        
+        if(!all(is.na(x.kj))){
+          # Observations in uniform scale for month {k} and year {j}
+          #w.kj = sapply(x.kj, pnorm, mean=mu.loc$mu.gauss[which((mu.loc$month==k)&(mu.loc$year==j))],
+          #              sd=sd.loc$sd.gauss[which((mu.loc$month==k)&(mu.loc$year==j))])
+          
+          # Transformation for non-exceedances
+          #z = qnorm(w.kj) # Gaussian scale for exceedances and non-exceedances
+          z = (x.kj-mu.loc$mu.gauss[which((mu.loc$month==k)&(mu.loc$year==j))])/
+            sd.loc$sd.gauss[which((mu.loc$month==k)&(mu.loc$year==j))]
+        }
+        else{
+          z<- x.kj
+        }
+        z.gauss <- c(z.gauss,z)
+      }
+    }
+    lat  <- rep(lat.i,length(z.gauss))
+    dist <- rep(dist.i,length(z.gauss))
+    data.gauss[[i]] <- cbind(year,month,lat,dist,z.gauss)
+  }
+}
+
+save(data.gauss, file="data.gauss.incomplete.Rdata")
+
+### compute a 99% threshold (stationary over space and time)
+quant.month.99.stationary <- quantile(unlist(lapply(data.gauss, function(x) x[,"z.gauss"])), 0.99, na.rm=TRUE)
+save(quant.month.99.stationary, file="quant.month.99.stationary.Rdata")
+
+######################################################################################
+###### dataset containing the exceedances at all sites,
+###### along with the year and the month of the excess,
+###### as well as the latitude, longitude, and distance to coast of each site
+######################################################################################
+all.excess      <- NULL
+index.keep.test <- 1:length(data.gauss)
+
+for(s in index.keep.test){
+  print(s)
+  dat      <- data.gauss[[s]][,"z.gauss"]
+  is.exc   <- which(dat>quant.month.99.stationary)
+  n.u      <- length(is.exc)
+  excess.s <- data.frame("datvar"=dat[is.exc]-quant.month.99.stationary,
+                         "year"=year[is.exc],
+                         "month"=month[is.exc],
+                         "long"=rep(loc[s,1],n.u),
+                         "lat"=rep(loc[s,2],n.u),
+                         "dist"=rep(dist2coast[s,"distance"],n.u))
+  all.excess <- rbind(all.excess,excess.s)
+}
+
+save(all.excess, file="all.excess.99.onGaussianscale.stat.thd.Rdata")
+
+########################################################################################################################
+### 1) Fitting the GPD model
+########################################################################################################################
+library(ismev)
+library(parallel)
+library(doParallel)
+
+### full model only for the scale
+###### Model for the scale and shape parameters
+xiFrhs= ~1
+nuFrhs= ~s(year)+ti(lat)+ti(dist)+ti(lat,dist)
+mod_full <- ismev::gamGPDfit(all.excess, threshold=0, datvar="datvar", xiFrhs=xiFrhs, nuFrhs=nuFrhs)
+save(mod_full,file="mod_full.99.gamGaussGPD.stat.thd.Rdata")
+
+########################################################################################################################
+### 3) Fitting the rate of the number of exceedances using logistic regression (standard gam() application)
+### this is for prediction purposes: for a combination of the covariates where no excess has been observed,
+### we could still predict the probability of exceedance
+########################################################################################################################
+
+### We need to extract the number of exceedances for each month, year, and pixel
+### dataset containing the number of exceedances and the total number of observations per month and year at each sites
+### as well as the latitude, longitude, and distance to coast of each site
+
+function_extract <- function(s){
+  nbr.excess <- NULL
+  dat        <- data.gauss[[s]][,"z.gauss"]
+  
+  for(m in unique(month)){
+    for(y in unique(year)){
+      excess.m.y <- which((dat>quant.month.99.stationary)&(month==m)&(year==y))
+      tmp        <- data.frame("n.u"=length(excess.m.y),
+                               "n"=length(which((month==m)&(year==y))),
+                               "month"=m,
+                               "year"=y,
+                               "long"=loc[s,1],
+                               "lat"=loc[s,2],
+                               "dist"=dist2coast[s,"distance"])
+      nbr.excess <- rbind(nbr.excess,tmp)
+    }
+  }
+  return(nbr.excess)
+}
+
+registerDoParallel(cores = detectCores())
+nbr_excess_s <- foreach(s=index.keep.test) %dopar% {
+  function_extract(s)
+}
+stopImplicitCluster()
+
+nbr_excess <- do.call(rbind, nbr_excess_s)
+
+save(nbr_excess, file="nbr_excess.99_gamGaussGPD.stat.thd.Rdata")
+
+### We use all available covariates and perform an automatic model selection 
+### using an additional penalty term allowing for degrees of freedom exactly equal to 0
+
+cl <- makeCluster(detectCores())
+lam_full_logit <- bam((n.u)~s(year)+ti(lat)+ti(dist)+ti(lat,dist), data=nbr_excess, 
+                      family=poisson,select=TRUE,cluster=cl) # fit gam model
+stopCluster(cl)
+
+### get fitted values for all available combinations of covariates
+prob.fit <- cbind(nbr_excess, prob=lam_full_logit$fitted.values/nbr_excess$n)
+
+########################################################################################################################
+### Save objects of interest
+########################################################################################################################
+save(mod_full, file="mod_xi_time_lat.99.onGaussianscale.stat.thd.Rdata")
+save(prob.fit, file="prob.fit.new.99.onGaussianscale.stat.thd.Rdata")
+load("all.excess.99.onGaussianscale.stat.thd.Rdata")
+
+#######################################################################################################################
+### Transform the tails using the fitted GPD => data on a standard Gaussian scale
+#######################################################################################################################
+## -------------------------------------------- ##
+## Transformation to exponential scale          ##
+Tx <- function(x, xi, mu, sigma){               ##        
+  if(is.na(x))                                  ##
+    return(NA)                                  ##
+  else{                                         ##
+    if(xi == 0)                                 ##
+      return((x - mu)/sigma)                    ##
+    else                                        ##
+      return((1/xi)*log(1 + xi*(x - mu)/sigma)) ##
+  }                                             ##
+  ##
+}                                               ##
+## -------------------------------------------- ##
+library(parallel)
+library(mgcv)
+library(evd)
+
+# This function transform the original data to Gaussian scale for a given location i ----
+get.data.i <- function(i, months = NULL, years = NULL){
+  lat.i   = unique(data.gauss[[i]][,"lat"])
+  dist.i  = unique(data.gauss[[i]][,"dist"])
+  month.i = data.gauss[[i]][,"month"]
+  year.i  = data.gauss[[i]][,"year"]
+  
+  z = data.gauss[[i]][,"z.gauss"]
+  
+  
+  anom.training.gauss = NULL
+  xis = sigmas.gp = mus.gev = sigmas.gev = NULL
+  
+  if(is.null(years)) years = unique(year)
+  if(is.null(months)) months = 1:12
+  
+  for(j in years){
+    
+    for(k in months){
+      # Observations in original scale for month {k} and year {j}
+      z.kj = z[(month.i == k) & (year.i == j)]
+      
+      xi = predict(mod_full$xiObj,newdata=data.frame("month"=k,"year"=j,"lat"=lat.i,"dist"=dist.i))
+      xis = rbind(xis, c(k, j, i, xi))
+      
+      sigmagp = exp(predict(mod_full$nuObj,newdata=data.frame("month"=k,"year"=j,"lat"=lat.i,"dist"=dist.i)))/(1+xi)
+      sigmas.gp = rbind(sigmas.gp, c(k, j, i, sigmagp))
+      
+      pr = as.numeric(prob.fit$prob[prob.fit$month == k & prob.fit$year == j & prob.fit$dist == dist.i & prob.fit$lat == lat.i][1])
+      thresh = quant.month.99[k]
+      
+      # Location and Scale GEV
+      if(xi == 0){
+        mu.gev = thresh + sigmagp*log(pr)
+        sigma.gev = sigmagp
+      }else{
+        mu.gev = thresh - sigmagp*(pr^(-xi) - 1)/(xi*pr^(-xi))
+        sigma.gev = sigmagp - sigmagp*(pr^(-xi) - 1)/pr^(-xi)
+      }
+      mus.gev    = rbind(mus.gev, c(k, j, i, mu.gev))
+      sigmas.gev = rbind(sigmas.gev, c(k, j, i, sigma.gev))
+      
+      if(!(all(is.na(z.kj)))){
+        is.exc = z.kj > thresh
+        if(sum(is.exc, na.rm = T) > 0){
+          z.exc = z.kj[is.exc] # Exceedances for month {k} and year {j}
+          
+          tmpE <- sapply(z.exc, Tx, xi = xi, mu = mu.gev, sigma = sigma.gev) # Observations in exponential scale
+          u.exc <- sapply(tmpE, pexp)
+          # u.exc <- sapply(z.exc, Tx.new, xi = xi, thresh = thresh, sigma = sigmagp, pr=pr) # Observations in exponential scale
+          z.kj[is.exc] <- sapply(u.exc, qnorm) # replacing z values in the presence of exceedances
+        }
+      }
+      
+      anom.training.gauss = c(anom.training.gauss, z.kj)
+    }
+  }
+  
+  xis = data.frame(xis); colnames(xis) = c('month', 'year', 'location', 'xi')
+  sigmas.gp = data.frame(sigmas.gp); colnames(sigmas.gp) = c('month', 'year', 'location', 'sigma.gp')
+  mus.gev = data.frame(mus.gev); colnames(mus.gev) = c('month', 'year', 'location', 'mu.gev')
+  sigmas.gev = data.frame(sigmas.gev); colnames(sigmas.gev) = c('month', 'year', 'location', 'sigma.gev')
+  
+  mus.gauss = data.frame(gauss.param[[i]]$mus.gauss); colnames(mus.gauss) = c('month', 'year', 'location', 'mu.gauss')
+  sds.gauss = data.frame(gauss.param[[i]]$sds.gauss); colnames(sds.gauss) = c('month', 'year', 'location', 'sd.gauss')
+  
+  
+  return(list(anom.training.gauss = anom.training.gauss,
+              xis = xis, sigmas.gp = sigmas.gp, mus.gev = mus.gev, sigmas.gev = sigmas.gev,
+              mus.gauss = mus.gauss, sds.gauss = sds.gauss))
+}
+
+print('Running code')
+out.v1 <- mclapply(1:4000, get.data.i, mc.cores = 10)
+save(out.v1, file = paste0("loc.gauss.GPD.param_v1.Rdata"))
+print('Outputs saved')
+
+print('Running code')
+out.v2 <- mclapply(4001:8000, get.data.i, mc.cores = 10)
+save(out.v2, file = paste0("loc.gauss.GPD.param_v2.Rdata"))
+print('Outputs saved')
+
+print('Running code')
+out.v3 <- mclapply(8001:12000, get.data.i, mc.cores = 10)
+save(out.v3, file = paste0("loc.gauss.GPD.param_v3.Rdata"))
+print('Outputs saved')
+
+print('Running code')
+out.v4 <- mclapply(12001:16703, get.data.i, mc.cores = 10)
+save(out.v4, file = paste0("loc.gauss.GPD.param_v4.Rdata"))
+print('Outputs saved')
+
+###### glue files together
+out <- NULL
+
+for(i in 1:length(out.v1)){
+  out[[i]] <- out.v1[[i]]
+}
+
+for(i in 1:length(out.v2)){
+  j <- i+4000
+  out[[j]] <- out.v2[[i]]
+}
+
+for(i in 1:length(out.v3)){
+  j <- i+8000
+  out[[j]] <- out.v3[[i]]
+}
+
+for(i in 1:length(out.v4)){
+  j <- i+12000
+  out[[j]] <- out.v4[[i]]
+}
+
+save(out, file = paste0("loc.gauss.GPD.param.Rdata"))
+
+########################################################################################################################
+### QQ-plots for three selected locations: data transformed using Gaussian model and data transformed using Gauss+GPD
+########################################################################################################################
+
+#load data containing all fitted paramters for each site
+load("~/Desktop/HEC_Montreal/Postdoc/Data_Challenge_EVA_2019/DanielaLindaThomas/gamGauss/loc.gauss.GPD.param.Rdata")
+
+#retain fitted parameters only for three site: 1000, 6560, 16000
+sites2keep   <- c(1000,6560,16000)
+fitted.param <- list()
+fitted.param[[1]] <- out[[sites2keep[1]]]
+fitted.param[[2]] <- out[[sites2keep[2]]]
+fitted.param[[3]] <- out[[sites2keep[3]]]
+
+rm(out)
+
+#need original anomalies to transform them on the Gaussian scale using the Gaussian model ONLY
+load("~/Dropbox/DanielaLindaThomas/DATA_TRAINING.RData")
+anom.original <- list()
+anom.original[[1]] <- anom.training[,sites2keep[1]]
+anom.original[[2]] <- anom.training[,sites2keep[2]]
+anom.original[[3]] <- anom.training[,sites2keep[3]]
+
+#transform original anomalies to gaussian scale (using Gaussian model ONLY)
+anom.original2Gauss <- list()
+
+for(ss in 1:length(sites2keep)){
+  trans.dat <- NULL
+  for(i in 1:length(anom.original[[ss]])){
+    idx <- which((fitted.param[[ss]]$mus.gauss$month==month[i])&
+                   (fitted.param[[ss]]$mus.gauss$year==year[i]))
+    trans.dat <- c(trans.dat, (anom.original[[ss]][i]-fitted.param[[ss]]$mus.gauss$mu.gauss[idx])/
+               sqrt(fitted.param[[ss]]$sds.gauss$sd.gauss[idx]))
+  }
+  
+  anom.original2Gauss[[ss]] <- trans.dat
+}
+
+library(ggplot2)
+library(qqplotr)
+library(gridExtra)
+
+### QQ-plots using Gaussian only
+df  <- data.frame(res = anom.original2Gauss[[1]])
+gg1 <- ggplot(df, aes(sample = res)) + 
+  scale_shape_manual(values=c(20)) +
+  stat_qq_band(aes(sample = res), alpha=0.2, colour=NA) +
+  stat_qq_point(dparams=list(mean=0,sd=1)) +
+  # stat_qq_point() +
+  #stat_qq_line() + 
+  geom_abline(intercept = 0, slope =1, col="black")+
+  theme_bw() + 
+  theme(legend.position="none", text = element_text(size = 14), panel.background = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  labs(title=expression(s[1]),
+       y = "Empirical quantiles", x= "Theoretical quantiles") +
+  scale_color_grey(start=0.1, end=0.6)
+
+df  <- data.frame(res = anom.original2Gauss[[2]])
+gg2 <- ggplot(df, aes(sample = res)) + 
+  scale_shape_manual(values=c(20)) +
+  stat_qq_band(aes(sample = res), alpha=0.2, colour=NA) +
+  stat_qq_point(dparams=list(mean=0,sd=1)) +
+  # stat_qq_point() +
+  #stat_qq_line() + 
+  geom_abline(intercept = 0, slope =1, col="black")+
+  theme_bw() + 
+  theme(legend.position="none", text = element_text(size = 14), panel.background = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  labs(title=expression(s[2]),
+       y = "Empirical quantiles", x= "Theoretical quantiles") +
+  scale_color_grey(start=0.1, end=0.6)
+
+df  <- data.frame(res = anom.original2Gauss[[3]])
+gg3 <- ggplot(df, aes(sample = res)) + 
+  scale_shape_manual(values=c(20)) +
+  stat_qq_band(aes(sample = res), alpha=0.2, colour=NA) +
+  stat_qq_point(dparams=list(mean=0,sd=1)) +
+  # stat_qq_point() +
+  #stat_qq_line() + 
+  geom_abline(intercept = 0, slope =1, col="black")+
+  theme_bw() + 
+  theme(legend.position="none", text = element_text(size = 14), panel.background = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  labs(title=expression(s[3]),
+       y = "Empirical quantiles", x= "Theoretical quantiles") +
+  scale_color_grey(start=0.1, end=0.6)
+
+grid.arrange(gg1,gg2,gg3, nrow=1,ncol=3)
+
+### QQ-plots using Gaussian+GPD
+df  <- data.frame(res = fitted.param[[1]]$anom.training.gauss)
+gg4 <- ggplot(df, aes(sample = res)) + 
+  scale_shape_manual(values=c(20)) +
+  stat_qq_band(aes(sample = res), alpha=0.2, colour=NA) +
+  stat_qq_point(dparams=list(mean=0,sd=1)) +
+  # stat_qq_point() +
+  #stat_qq_line() + 
+  geom_abline(intercept = 0, slope =1, col="black")+
+  theme_bw() + 
+  theme(legend.position="none", text = element_text(size = 14), panel.background = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  labs(title=expression(s[1]),
+       y = "Empirical quantiles", x= "Theoretical quantiles") +
+  scale_color_grey(start=0.1, end=0.6)
+
+df  <- data.frame(res = fitted.param[[2]]$anom.training.gauss)
+gg5 <- ggplot(df, aes(sample = res)) + 
+  scale_shape_manual(values=c(20)) +
+  stat_qq_band(aes(sample = res), alpha=0.2, colour=NA) +
+  stat_qq_point(dparams=list(mean=0,sd=1)) +
+  # stat_qq_point() +
+  #stat_qq_line() + 
+  geom_abline(intercept = 0, slope =1, col="black")+
+  theme_bw() + 
+  theme(legend.position="none", text = element_text(size = 14), panel.background = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  labs(title=expression(s[2]),
+       y = "Empirical quantiles", x= "Theoretical quantiles") +
+  scale_color_grey(start=0.1, end=0.6)
+
+df  <- data.frame(res = fitted.param[[3]]$anom.training.gauss)
+gg6 <- ggplot(df, aes(sample = res)) + 
+  scale_shape_manual(values=c(20)) +
+  stat_qq_band(aes(sample = res), alpha=0.2, colour=NA) +
+  stat_qq_point(dparams=list(mean=0,sd=1)) +
+  # stat_qq_point() +
+  #stat_qq_line() + 
+  geom_abline(intercept = 0, slope =1, col="black")+
+  theme_bw() + 
+  theme(legend.position="none", text = element_text(size = 14), panel.background = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  labs(title=expression(s[3]),
+       y = "Empirical quantiles", x= "Theoretical quantiles") +
+  scale_color_grey(start=0.1, end=0.6)
+
+grid.arrange(gg1,gg2,gg3,gg4,gg5,gg6, nrow=2,ncol=3)
