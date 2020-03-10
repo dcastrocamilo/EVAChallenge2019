@@ -64,10 +64,10 @@ for(ll in 1:length(file_list)){
     mu.loc=out[[k]]$mus.gauss
     sd.loc=sqrt(out[[k]]$sds.gauss)
     i=unique(out[[k]]$mus.gauss$location)
-
+    
     mus.gauss = data.frame(mu.loc); colnames(mus.gauss) = c('month', 'year', 'location', 'mu.gauss')
     sds.gauss = data.frame(sd.loc); colnames(sds.gauss) = c('month', 'year', 'location', 'sd.gauss')
-
+    
     gauss.param[[i]] <- list(mus.gauss=mus.gauss, sds.gauss=sds.gauss)
   }
 }
@@ -163,9 +163,26 @@ library(doParallel)
 ### full model only for the scale
 ###### Model for the scale and shape parameters
 xiFrhs= ~1
-nuFrhs= ~s(year)+ti(lat)+ti(dist)+ti(lat,dist)
-mod_full <- ismev::gamGPDfit(all.excess, threshold=0, datvar="datvar", xiFrhs=xiFrhs, nuFrhs=nuFrhs)
-save(mod_full,file="mod_full.99.gamGaussGPD.stat.thd.Rdata")
+# nuFrhs= ~s(year)+ti(lat)+ti(dist)+ti(lat,dist)
+# mod_full <- ismev::gamGPDfit(all.excess, threshold=0, datvar="datvar", xiFrhs=xiFrhs, nuFrhs=nuFrhs)
+# save(mod_full, file="mod_xi_time_lat.99.onGaussianscale.stat.thd.Rdata")
+nuFrhs= ~1
+mod_0 <- ismev::gamGPDfit(all.excess, threshold=0, datvar="datvar", xiFrhs=xiFrhs, nuFrhs=nuFrhs)
+
+library(evd)
+mod_0_fpot <- evd::fpot(all.excess$datvar, threshold=0, model="gpd")
+
+# same estimates as mod_0
+# xi= unique(predict(mod_0$xiObj)) #-0.08762637 
+# sigmagp=exp(unique(predict(mod_0$nuObj)))/(1+xi) #0.4672998
+
+# mod_0_fpot$estimate
+# scale       shape 
+# 0.46727790 -0.08760717 
+
+# mod_0_fpot$std.err
+# scale        shape 
+# 0.0005544954 0.0008002604 
 
 ########################################################################################################################
 ### 3) Fitting the rate of the number of exceedances using logistic regression (standard gam() application)
@@ -221,7 +238,7 @@ prob.fit <- cbind(nbr_excess, prob=lam_full_logit$fitted.values/nbr_excess$n)
 ########################################################################################################################
 ### Save objects of interest
 ########################################################################################################################
-save(mod_full, file="mod_xi_time_lat.99.onGaussianscale.stat.thd.Rdata")
+save(mod_0, file="mod_0_thd_stat.Rdata")
 save(prob.fit, file="prob.fit.new.99.onGaussianscale.stat.thd.Rdata")
 load("all.excess.99.onGaussianscale.stat.thd.Rdata")
 
@@ -255,8 +272,15 @@ get.data.i <- function(i, months = NULL, years = NULL){
   
   z = data.gauss[[i]][,"z.gauss"]
   
+  #we have a constant shape and scale parameters (of GPD) over space and time
+  xi= unique(predict(mod_0$xiObj))
+  sigmagp=exp(unique(predict(mod_0$nuObj)))/(1+xi)
   
-  anom.training.gauss = NULL
+  #constant threshold over space and time
+  thresh=as.numeric(quant.month.99.stationary)
+  
+  
+  anom.training.gauss = anom.training.gaussGP = NULL
   xis = sigmas.gp = mus.gev = sigmas.gev = NULL
   
   if(is.null(years)) years = unique(year)
@@ -268,14 +292,12 @@ get.data.i <- function(i, months = NULL, years = NULL){
       # Observations in original scale for month {k} and year {j}
       z.kj = z[(month.i == k) & (year.i == j)]
       
-      xi = predict(mod_full$xiObj,newdata=data.frame("month"=k,"year"=j,"lat"=lat.i,"dist"=dist.i))
       xis = rbind(xis, c(k, j, i, xi))
       
-      sigmagp = exp(predict(mod_full$nuObj,newdata=data.frame("month"=k,"year"=j,"lat"=lat.i,"dist"=dist.i)))/(1+xi)
       sigmas.gp = rbind(sigmas.gp, c(k, j, i, sigmagp))
       
-      pr = as.numeric(prob.fit$prob[prob.fit$month == k & prob.fit$year == j & prob.fit$dist == dist.i & prob.fit$lat == lat.i][1])
-      thresh = quant.month.99[k]
+      #pr = as.numeric(prob.fit$prob[prob.fit$month == k & prob.fit$year == j & prob.fit$dist == dist.i & prob.fit$lat == lat.i][1])
+      pr=0.01
       
       # Location and Scale GEV
       if(xi == 0){
@@ -300,7 +322,7 @@ get.data.i <- function(i, months = NULL, years = NULL){
         }
       }
       
-      anom.training.gauss = c(anom.training.gauss, z.kj)
+      anom.training.gaussGP = c(anom.training.gaussGP, z.kj)
     }
   }
   
@@ -313,7 +335,7 @@ get.data.i <- function(i, months = NULL, years = NULL){
   sds.gauss = data.frame(gauss.param[[i]]$sds.gauss); colnames(sds.gauss) = c('month', 'year', 'location', 'sd.gauss')
   
   
-  return(list(anom.training.gauss = anom.training.gauss,
+  return(list(anom.training.gaussGP = anom.training.gaussGP, anom.training.gauss = data.gauss[[i]][,"z.gauss"],
               xis = xis, sigmas.gp = sigmas.gp, mus.gev = mus.gev, sigmas.gev = sigmas.gev,
               mus.gauss = mus.gauss, sds.gauss = sds.gauss))
 }
@@ -394,7 +416,7 @@ for(ss in 1:length(sites2keep)){
     idx <- which((fitted.param[[ss]]$mus.gauss$month==month[i])&
                    (fitted.param[[ss]]$mus.gauss$year==year[i]))
     trans.dat <- c(trans.dat, (anom.original[[ss]][i]-fitted.param[[ss]]$mus.gauss$mu.gauss[idx])/
-               sqrt(fitted.param[[ss]]$sds.gauss$sd.gauss[idx]))
+                     sqrt(fitted.param[[ss]]$sds.gauss$sd.gauss[idx]))
   }
   
   anom.original2Gauss[[ss]] <- trans.dat
