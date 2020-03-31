@@ -150,4 +150,37 @@ prob.fit <- cbind(nbr_excess, prob=prob.exc.model$fitted.values/nbr_excess$n)
 ############                The local approach                ##########
 ########################################################################
 
+# get 40 nearest neighbors of each pixel ####
+library(FNN)
+k.nn = 40
+u = 0.75
+nn = get.knn(loc, k = k.nn)$nn.index
+dim(nn)
 
+# functions for maximum likelihood estimation of the GPD ####
+
+# GPD density
+function(x,sigma,xi){
+  if(abs(xi)<10^{-4}){
+    exp(-x/sigma)/sigma
+  }else{
+    ifelse(1+xi*x/sigma<=0,0,sigma^{-1}*(1+xi*x/sigma)^{-1/xi-1})
+  }
+}
+# negative GP log-likelihood ####
+fun2opt=function(par, exc){
+  if(par[1] <= 0) return(Inf)
+  -sum(log(dgp(x=exc, sigma = par[1], xi = par[2])))
+}
+
+# estimate marginal parameters using anom.training.gauss defined above ####
+xi = scale = pexc = rep(NA, ncol(anom.training.gauss))
+for(i in 1:ncol(anom.training.gauss)){
+  sample.i = as.numeric(anom.training[, unique(c(i, nn[i,]))])
+  pexc[i] = mean(sample.i > u, na.rm = TRUE)
+  exc.i = na.omit(sample.i[sample.i > u] - u + 10^{-6})
+  tmp = optim(par = c(.5, 0), fun2opt, exc = exc.i, method = "Nelder")$par
+  scale[i] = tmp[1]
+  xi[i] = tmp[2]  
+}
+# now, xi, pexc and scale are vectors containing one estimate for each location in loc
