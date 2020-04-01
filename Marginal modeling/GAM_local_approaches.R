@@ -181,7 +181,7 @@ fun2opt=function(par, exc){
 # estimate marginal parameters using anom.training.gauss defined above ####
 xi = scale = pexc = rep(NA, ncol(anom.training.gauss))
 for(i in 1:ncol(anom.training.gauss)){
-  sample.i = as.numeric(anom.training[, unique(c(i, nn[i,]))])
+  sample.i = as.numeric(anom.training.gauss[, unique(c(i, nn[i,]))])
   pexc[i] = mean(sample.i > u, na.rm = TRUE)
   exc.i = na.omit(sample.i[sample.i > u] - u + 10^{-6})
   tmp = optim(par = c(.5, 0), fun2opt, exc = exc.i, method = "Nelder")$par
