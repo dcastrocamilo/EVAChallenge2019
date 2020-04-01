@@ -146,6 +146,11 @@ stopCluster(cl)
 ### get fitted values for all available combinations of covariates, i.e., all locations
 prob.fit <- cbind(nbr_excess, prob=prob.exc.model$fitted.values/nbr_excess$n)
 
+# Finally, to obtain vectors containing one estimate for each location in loc:
+scale = gpd_estimates$fitted_gpd$scale
+xi = gpd_estimates$fitted_gpd$shape
+pexc = prob.fit$prob
+
 ########################################################################
 ############                The local approach                ##########
 ########################################################################
