@@ -55,6 +55,9 @@ mod_Gaussls_year <- gam(list(obs~-1+as.factor(year),~-1+as.factor(year)),
 
 fitted.Gauss <- predict(mod_Gaussls_year, type="response")
 
+mean.by.year = unique(fitted.Gauss[,1])
+sd.by.year = 1/unique(fitted.Gauss[,2])
+
 fitted.mu <- rep(unique(fitted.Gauss[,1]), each=365)
 fitted.sd <- rep(1/unique(fitted.Gauss[,2]), each=365)
 
@@ -154,6 +157,18 @@ pexc = prob.fit$prob
 ########################################################################
 ############                The local approach                ##########
 ########################################################################
+
+years.unique = unique(year)
+mean.by.year = c()
+sd.by.year = c()
+for(i in 1:length(unique(year))){
+  mean.by.year[i] = mean(anom.training[year == years.unique[i],], na.rm = TRUE)
+  sd.by.year[i] = sd(anom.training[year == years.unique[i],], na.rm = TRUE)
+}
+means.vec = mean.by.year[year - 1985 + 1]
+sd.vec = sd.by.year[year - 1985 + 1]
+
+anom.training.gauss = (anom.training - means.vec)/sd.vec
 
 # get 40 nearest neighbors of each pixel ####
 library(FNN)
